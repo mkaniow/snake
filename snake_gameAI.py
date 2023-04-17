@@ -72,13 +72,13 @@ class SnakeGameAI:
         game_over = False
         if self.collision() or self.kill_cooldown == 0:
             game_over = True
-            reward -= 5
+            reward = -1
             return reward, game_over, self.score
         
         # 4. place new food 
         if self.head == self.food:
             self.score += 1
-            reward += 5
+            reward = 1
             self.iterations = 0
             self.place_food()
             self.kill_cooldown = 100 + len(self.snake)
