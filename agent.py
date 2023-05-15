@@ -4,7 +4,7 @@ import numpy as np
 from snake_gameAI import SnakeGameAI, Direction, Point
 from collections import deque
 from model import Linear_QNet, QTrainer
-from ploter import plot
+#from ploter import plot
 import json
 import os.path
 
@@ -22,19 +22,19 @@ class Agent:
         self.model = Linear_QNet(11, 5, 3)
         self.trainer = QTrainer(self.model, lr=LR, gamma=self.gamma)
 
-        if not os.path.isfile(f'file_gamma{self.gamma}.json'):
-            with open(f'file_gamma{self.gamma}.json', 'a') as f:
-                qwe = {
-                'game_number' : 0,
-                'score' : [0],
-                'average' : [0],
-                'record' : 0
-                }
-                j = json.dumps(qwe)
-                f.write(j)
-            self.games_memory = json.load(open(f'file_gamma{self.gamma}.json'))
-        elif os.path.isfile(f'file_gamma{self.gamma}.json'):
-            self.games_memory = json.load(open(f'file_gamma{self.gamma}.json'))
+        #if not os.path.isfile(f'file_gamma{self.gamma}.json'):
+        #    with open(f'file_gamma{self.gamma}.json', 'a') as f:
+        #        qwe = {
+        #        'game_number' : 0,
+        #        'score' : [0],
+        #        'average' : [0],
+        #        'record' : 0
+        #        }
+        #        j = json.dumps(qwe)
+        #        f.write(j)
+        #    self.games_memory = json.load(open(f'file_gamma{self.gamma}.json'))
+        #elif os.path.isfile(f'file_gamma{self.gamma}.json'):
+        #    self.games_memory = json.load(open(f'file_gamma{self.gamma}.json'))
 
     def get_state(self, game):
         head = game.snake[0]
@@ -98,9 +98,9 @@ class Agent:
         self.trainer.train_step(states, actions, rewards, next_states, game_overs)
 
     def get_action(self, state):
-        self.epsilon = 200 - self.games_number
+        self.epsilon = 150 - self.games_number
         final_move = [0, 0, 0]
-        if random.randint(0, 200) < self.epsilon:
+        if random.randint(0, 150) < self.epsilon:
             move = random.randint(0, 2)
             final_move[move] = 1
         else:
@@ -119,8 +119,9 @@ def train():
     record = 0
     agent = Agent()
     game = SnakeGameAI()
+    game_cntr = 0
 
-    if agent.games_memory["game_number"] == 0:
+    if game_cntr == 0:
         while True:
             #get old state 
             state_old = agent.get_state(game)
@@ -148,24 +149,27 @@ def train():
                 agent.model.save_checkpoint(checkpoint)
                 game.reset()
                 #print(self.linear1.state_dict())
-                agent.games_memory["game_number"] = agent.games_memory["game_number"] + 1
-                print("gra", agent.games_memory["game_number"])
+                #agent.games_memory["game_number"] = agent.games_memory["game_number"] + 1
+                #print("gra", agent.games_memory["game_number"])
                 agent.train_long_memory()
                 #agent.model.save()
 
-                if score > record:
-                    record = score
+                #if score > record:
+                #    record = score
                     #agent.model.save()
 
-                print('Game: ', agent.games_number, 'Score: ', score, 'Record: ', record)
+                #print('Game: ', agent.games_number, 'Score: ', score, 'Record: ', record)
 
                 #plot_scores.append(score)
                 #total_score += score
                 #average_score = total_score / agent.games_number
                 #plot_average_scores.append(average_score)
                 #plot(plot_scores, plot_average_scores)
+                game_cntr += 1
+                print('Game: ', agent.games_number, 'Score: ', score)
+                agent.games_number += 1
 
-    elif agent.games_memory["game_number"] != 0:
+    elif game_cntr != 0:
         while True:
             agent.model.load_checkpoint('model.pth')
             agent.trainer.load_checkpointv2('model.pth')
@@ -195,21 +199,24 @@ def train():
                 agent.model.save_checkpoint(checkpoint)
                 game.reset()
                 #print(self.linear1.state_dict())
-                agent.games_memory["game_number"] = agent.games_memory["game_number"] + 1
+                #agent.games_memory["game_number"] = agent.games_memory["game_number"] + 1
                 agent.train_long_memory()
                 #agent.model.save()
 
-                if score > record:
-                    record = score
+                #if score > record:
+                #    record = score
                     #agent.model.save()
 
-                print('Game: ', agent.games_number, 'Score: ', score, 'Record: ', record)
+                #print('Game: ', agent.games_number, 'Score: ', score, 'Record: ', record)
 
                 #plot_scores.append(score)
                 #total_score += score
                 #average_score = total_score / agent.games_number
                 #plot_average_scores.append(average_score)
                 #plot(plot_scores, plot_average_scores)
+                game_cntr += 1
+                print('Game: ', agent.games_number, 'Score: ', score)
+                agent.games_number += 1
 
 
 

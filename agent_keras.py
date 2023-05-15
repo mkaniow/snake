@@ -6,14 +6,42 @@ from snake_gameAI import Point
 from snake_gameAI import Direction, SnakeGameAI
 import json
 import os.path
+import random
 
 MEMORY_SIZE = 1000000
 INPUT_SHAPE = 11
-LR = 0.005
-GAMMA = 0.1
+LR = 0.05
+GAMMA = 0.9
 BATCH_SIZE = 64
 GAME_EPSILON = 150
 
+class ReplayBuffer(object):
+    def __init__(self, max_size, input_shape, n_actions):
+        self.mem_size = max_size
+        self.mem_cntr = 0
+        self.state_memory = np.zeros((self.mem_size, input_shape))
+        self.new_state_memory = np.zeros((self.mem_size, input_shape))
+        self.action_memory = np.zeros((self.mem_size, n_actions), dtype=np.float32)
+        self.reward_memory = np.zeros(self.mem_size)
+
+    def store_transition(self, state, action, reward, state_):
+        index = self.mem_cntr % self.mem_size
+        self.state_memory[index] = state
+        self.new_state_memory[index] = state_
+        self.action_memory[index] = action
+        self.reward_memory[index] = reward
+        self.mem_cntr += 1
+
+    def sample_buffer(self, batch_size):
+        max_mem = min(self.mem_cntr, self.mem_size)
+        batch = np.random.choice(max_mem, batch_size)
+
+        states = self.state_memory[batch]
+        actions = self.action_memory[batch]
+        rewards = self.reward_memory[batch]
+        states_ = self.new_state_memory[batch]
+
+        return states, actions, rewards, states_
 
 def build_dqn(lr, n_actions, input_dims, fc1_dims, fc2_dims):
     model = Sequential([
@@ -28,33 +56,45 @@ def build_dqn(lr, n_actions, input_dims, fc1_dims, fc2_dims):
     return model
 
 class Agent:
-    def __init__(self):
-        print('start')
-        self.file_name_h5 = f'file_MS{MEMORY_SIZE}_LR{LR}_gamma{GAMMA}BS{BATCH_SIZE}.h5'
-        self.file_name_json = f'file_MS{MEMORY_SIZE}_LR{LR}_gamma{GAMMA}BS{BATCH_SIZE}.json'
+    def __init__(self, alpha, gamma, n_actions, batch_size,
+                 input_dims,mem_size=MEMORY_SIZE, fname='dqn_model.h5'):
+        self.action_space = [i for i in range(n_actions)]
+        self.gamma = gamma
+        self.epsilon = 0
+        self.batch_size = batch_size
+        self.model_file = fname
+        self.memory = ReplayBuffer(mem_size, input_dims, n_actions)
+        self.q_eval = build_dqn(alpha, n_actions, input_dims, 256, 256)
 
-        if not os.path.isfile(self.file_name_h5):
-            with open(self.file_name_h5, 'a') as f:
-                self.q_eval = build_dqn(LR, 3, INPUT_SHAPE, 256, 256)
-            with open(self.file_name_json, 'a') as f:
-                table = np.zeros((MEMORY_SIZE, INPUT_SHAPE), dtype=int)
-                tableBetter = table.tolist()
-                qwe = {
-                'game_number' : 0,
-                'memory_counter' : 0,
-                'score' : [0],
-                'average' : [0],
-                'record' : 0,
-                'memory' : tableBetter
-                }
-                j = json.dumps(qwe)
-                f.write(j)
-                self.memory = json.load(open(self.file_name_json))
-                print("witam")
-        elif os.path.isfile(self.file_name_h5):
-            print("co tam")
-            self.q_eval = load_model(self.file_name_h5)
-            self.memory = json.load(open(self.file_name_json))
+        #print('start')
+        #self.file_name_h5 = f'file_MS{MEMORY_SIZE}_LR{LR}_gamma{GAMMA}BS{BATCH_SIZE}.h5'
+        #self.file_name_json = f'file_MS{MEMORY_SIZE}_LR{LR}_gamma{GAMMA}BS{BATCH_SIZE}.json'
+
+        #if not os.path.isfile(self.file_name_h5):
+        #    with open(self.file_name_h5, 'a') as f:
+        #        self.q_eval = build_dqn(LR, 3, INPUT_SHAPE, 256, 256)
+        #    with open(self.file_name_json, 'a') as f:
+        #        table = np.zeros((MEMORY_SIZE, INPUT_SHAPE), dtype=int)
+        #        tableBetter = table.tolist()
+        #        qwe = {
+        #        'game_number' : 0,
+        #        'memory_counter' : 0,
+        #        'score' : [0],
+        #        'average' : [0],
+        #        'record' : 0,
+        #        'memory' : tableBetter
+        #        }
+        #        j = json.dumps(qwe)
+        #        f.write(j)
+        #        self.memory = json.load(open(self.file_name_json))
+        #        print("witam")
+        #elif os.path.isfile(self.file_name_h5):
+        #    print("co tam")
+        #    self.q_eval = load_model(self.file_name_h5)
+        #    self.memory = json.load(open(self.file_name_json))
+
+    def remember(self, state, action, reward, new_state, done):
+        self.memory.store_transition(state, action, reward, new_state, done)
                
     def get_state(self, game):
         head = game.snake[0]
@@ -207,46 +247,52 @@ class Agent:
         return arr_next
 
     def get_action(self, state):
-        epsilon = GAME_EPSILON - self.memory['game_number']
+        state = state[np.newaxis, :]
+        epsilon = GAME_EPSILON - self.epsilon
         final_move = [0, 0, 0]
         if random.randint(0, GAME_EPSILON) < epsilon:
             move = random.randint(0, 2)
             final_move[move] = 1
         else:
-            moves = q_eval.predict(state)
-            move = np.argmax(moves)
-            final_move[move] = 1
+            actions = self.q_eval.predict(state)
+            print(actions)
+            print('-----')
+            action = np.argmax(actions)
+            final_move[action] = 1
         return final_move
 
+    def learn(self):
+        if self.memory.mem_cntr > self.batch_size:
+            state, action, reward, new_state = self.memory.sample_buffer(self.batch_size)
 
+            action_values = np.array(self.action_space, dtype=np.int8)
+            action_indices = np.dot(action, action_values)
+
+            q_eval = self.q_eval.predict(state)
+
+            q_next = self.q_eval.predict(new_state)
+
+            q_target = q_eval.copy()
+
+            batch_index = np.arange(self.batch_size, dtype=np.int32)
+
+            q_target[batch_index, action_indices] = reward + self.gamma*np.max(q_next, axis=1)
+
+            _ = self.q_eval.fit(state, q_target)
 
 
 if __name__ == '__main__':
-    agent = Agent()
+
+    agent = Agent(LR, GAMMA, 3, BATCH_SIZE, INPUT_SHAPE)
     game = SnakeGameAI()
     while True:
         state_old = agent.get_state(game)
         final_move = agent.get_action(state_old)
+        state_new = agent.get_state_next(game, final_move)
         reward, game_over, score = game.play_step(final_move)
-        state_new = agent.get_state_next(game, finale_move)
-        q_next = self.q_eval.predict(state_new)
-        #if self.memory.mem_cntr > self.batch_size:
-        #    state, action, reward, new_state, done = self.memory.sample_buffer(self.batch_size)
-#
-        #    action_values = np.array(self.action_space, dtype=np.int8)
-        #    action_indices = np.dot(action, action_values)
-#
-        #    q_eval = self.q_eval.predict(state)
-#
-        #    q_next = self.q_eval.predict(new_state)
-#
-        #    q_target = q_eval.copy()
-#
-        #    batch_index = np.arange(self.batch_size, dtype=np.int32)
-#
-        #    q_target[batch_index, action_indices] = reward + self.gamma*np.max(q_next, axis=1)*done
-#
-        #    _ = self.q_eval.fit(state, q_target, verbose=0)
-#
-        #    self.epsilon = self.epsilon*self.epsilon_dec if self.epsilon > self.epsilon_min else self.epsilon_min
-    
+        agent.learn()
+
+        if game_over == True:
+            game.reset()
+            agent.epsilon += 1
+            print("Game:    ", agent.epsilon)

@@ -17,7 +17,7 @@ class Linear_QNet(nn.Module):
         return x
 
     def save_checkpoint(self, state, file_name='model.pth'):
-        print('=> saving')
+        #print('=> saving')
         torch.save(state, file_name)
 
     def load_checkpoint(self, checkpoint):

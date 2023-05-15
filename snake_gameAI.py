@@ -24,7 +24,7 @@ GREEN = pygame.Color(0, 255, 0)
 BLUE = pygame.Color(0, 0, 255)
 
 BLOCK_SIZE = 20
-SPEED = 15
+SPEED = 20
 
 class SnakeGameAI:
     
@@ -68,9 +68,9 @@ class SnakeGameAI:
         self.snake.insert(0, self.head)
 
         # 3. check if game over
-        reward = 0
+        reward = -0.1
         game_over = False
-        if self.collision() or self.kill_cooldown == 0:
+        if self.colision() or self.kill_cooldown == 0:
             game_over = True
             reward = -1
             return reward, game_over, self.score
@@ -93,7 +93,7 @@ class SnakeGameAI:
         # 6. return game over and score
         return reward, game_over, self.score
 
-    def collision(self, pt = None):
+    def colision(self, pt = None):
         if pt is None:
             pt = self.head
         if pt.x > self.w - BLOCK_SIZE or pt.x < 0 or pt.y > self.h - BLOCK_SIZE or pt.y < 0:
