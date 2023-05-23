@@ -8,11 +8,11 @@ import json
 import os.path
 import random
 
-MEMORY_SIZE = 1000000
+MEMORY_SIZE = 100000
 INPUT_SHAPE = 11
-LR = 0.05
-GAMMA = 0.9
-BATCH_SIZE = 64
+LR = 0.001
+GAMMA = 0.8
+BATCH_SIZE = 32
 GAME_EPSILON = 150
 
 class ReplayBuffer(object):
@@ -93,8 +93,8 @@ class Agent:
         #    self.q_eval = load_model(self.file_name_h5)
         #    self.memory = json.load(open(self.file_name_json))
 
-    def remember(self, state, action, reward, new_state, done):
-        self.memory.store_transition(state, action, reward, new_state, done)
+    def remember(self, state, action, reward, new_state):
+        self.memory.store_transition(state, action, reward, new_state)
                
     def get_state(self, game):
         head = game.snake[0]
@@ -264,9 +264,9 @@ class Agent:
     def learn(self):
         if self.memory.mem_cntr > self.batch_size:
             state, action, reward, new_state = self.memory.sample_buffer(self.batch_size)
-
             action_values = np.array(self.action_space, dtype=np.int8)
-            action_indices = np.dot(action, action_values)
+            action_indices_ = np.dot(action, action_values)
+            action_indices = action_indices_.astype(int)
 
             q_eval = self.q_eval.predict(state)
 
@@ -290,9 +290,10 @@ if __name__ == '__main__':
         final_move = agent.get_action(state_old)
         state_new = agent.get_state_next(game, final_move)
         reward, game_over, score = game.play_step(final_move)
-        agent.learn()
+        agent.remember(state_old, final_move, reward, state_new)
 
         if game_over == True:
+            agent.learn()
             game.reset()
             agent.epsilon += 1
             print("Game:    ", agent.epsilon)

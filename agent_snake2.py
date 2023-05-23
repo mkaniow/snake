@@ -11,8 +11,8 @@ class Agent:
     def __init__(self):
         #self.games_number = 0
         self.epsilon = 0
-        self.gamma = 0.81
-        self.ls = 0.41
+        self.gamma = GAMMA
+        self.ls = LS
         #self.Qtable = np.random.uniform(low=-0.5, high=0.5, size=(4, 9, 16, 3))
 
         if not os.path.isfile(f'file_alfa{self.ls}_gamma{self.gamma}.json'):
@@ -251,24 +251,26 @@ def train():
         if game_over == True:
             game.reset()
             agent.memory['game_number'] = agent.memory['game_number'] + 1
+            agent.memory['score'].append(score)
             #print(f'gra', agent.games_number)
 
 
             if score > record:
                 record = score
-                #agent.model.save()
 
-            print('Game: ', agent.memory['game_number'], 'Score: ', score, 'Record: ', record)
+            #print('Game: ', agent.memory['game_number'], 'Score: ', score, 'Record: ', record)
 
-            plot_scores.append(score)
-            total_score += score
-            average_score = total_score / agent.memory['game_number']
-            plot_average_scores.append(average_score)
-            if agent.memory['game_number'] == 700:
-                plot(plot_scores, plot_average_scores)
+            #plot_scores.append(score)
+            #total_score += score
+            #average_score = total_score / agent.memory['game_number']
+            #plot_average_scores.append(average_score)
+            if agent.memory['game_number'] > 300:
                 break
                 
 
     
 if __name__ == '__main__':
-    train()
+    
+    for LS in np.arange(0.6, 1, 0.1):
+        for GAMMA in np.arange(0.1, 1, 0.1):
+            train()
