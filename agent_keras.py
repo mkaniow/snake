@@ -1,4 +1,4 @@
-from keras.layers import Dense, Activation
+from keras.layers import Dense, Activation, BatchNormalization, Dropout
 from keras.models import Sequential, load_model
 from keras.optimizers import Adam
 import numpy as np
@@ -12,8 +12,9 @@ MEMORY_SIZE = 100000
 INPUT_SHAPE = 11
 LR = 0.001
 GAMMA = 0.8
-BATCH_SIZE = 32
+BATCH_SIZE = 128
 GAME_EPSILON = 150
+#LAYER_SIZE = 256
 
 class ReplayBuffer(object):
     def __init__(self, max_size, input_shape, n_actions):
@@ -46,8 +47,10 @@ class ReplayBuffer(object):
 def build_dqn(lr, n_actions, input_dims, fc1_dims, fc2_dims):
     model = Sequential([
                 Dense(fc1_dims, input_shape=(input_dims,)),
+                Dropout(0.2),
                 Activation('relu'),
                 Dense(fc2_dims),
+                Dropout(0.2),
                 Activation('relu'),
                 Dense(n_actions)])
 
@@ -57,41 +60,27 @@ def build_dqn(lr, n_actions, input_dims, fc1_dims, fc2_dims):
 
 class Agent:
     def __init__(self, alpha, gamma, n_actions, batch_size,
-                 input_dims,mem_size=MEMORY_SIZE, fname='dqn_model.h5'):
+                 input_dims,mem_size=MEMORY_SIZE, fname=f'dqn_model.h5'):
         self.action_space = [i for i in range(n_actions)]
         self.gamma = gamma
         self.epsilon = 0
         self.batch_size = batch_size
         self.model_file = fname
         self.memory = ReplayBuffer(mem_size, input_dims, n_actions)
-        self.q_eval = build_dqn(alpha, n_actions, input_dims, 256, 256)
+        self.q_eval = build_dqn(alpha, n_actions, input_dims, LAYER_SIZE, LAYER_SIZE)
 
-        #print('start')
-        #self.file_name_h5 = f'file_MS{MEMORY_SIZE}_LR{LR}_gamma{GAMMA}BS{BATCH_SIZE}.h5'
-        #self.file_name_json = f'file_MS{MEMORY_SIZE}_LR{LR}_gamma{GAMMA}BS{BATCH_SIZE}.json'
+        if not os.path.isfile(f'dqn_model_DO_double_{LAYER_SIZE}.json'):
+            with open(f'dqn_model_DO_double_{LAYER_SIZE}.json', 'a') as f:
+                qwe = {
+                'game_number' : 0,
+                'score' : []
+                }
+                j = json.dumps(qwe)
+                f.write(j)
+            self.score_memory = json.load(open(f'dqn_model_DO_double_{LAYER_SIZE}.json'))
+        elif os.path.isfile(f'dqn_model_DO_double_{LAYER_SIZE}.json'):
+            self.score_memory = json.load(open(f'dqn_model_DO_double_{LAYER_SIZE}.json'))
 
-        #if not os.path.isfile(self.file_name_h5):
-        #    with open(self.file_name_h5, 'a') as f:
-        #        self.q_eval = build_dqn(LR, 3, INPUT_SHAPE, 256, 256)
-        #    with open(self.file_name_json, 'a') as f:
-        #        table = np.zeros((MEMORY_SIZE, INPUT_SHAPE), dtype=int)
-        #        tableBetter = table.tolist()
-        #        qwe = {
-        #        'game_number' : 0,
-        #        'memory_counter' : 0,
-        #        'score' : [0],
-        #        'average' : [0],
-        #        'record' : 0,
-        #        'memory' : tableBetter
-        #        }
-        #        j = json.dumps(qwe)
-        #        f.write(j)
-        #        self.memory = json.load(open(self.file_name_json))
-        #        print("witam")
-        #elif os.path.isfile(self.file_name_h5):
-        #    print("co tam")
-        #    self.q_eval = load_model(self.file_name_h5)
-        #    self.memory = json.load(open(self.file_name_json))
 
     def remember(self, state, action, reward, new_state):
         self.memory.store_transition(state, action, reward, new_state)
@@ -248,7 +237,7 @@ class Agent:
 
     def get_action(self, state):
         state = state[np.newaxis, :]
-        epsilon = GAME_EPSILON - self.epsilon
+        epsilon = GAME_EPSILON - self.score_memory['game_number']
         final_move = [0, 0, 0]
         if random.randint(0, GAME_EPSILON) < epsilon:
             move = random.randint(0, 2)
@@ -280,9 +269,12 @@ class Agent:
 
             _ = self.q_eval.fit(state, q_target)
 
+    #def save_model(self):
+    #    save_path = 'C:\\Users\\Michał\\Desktop\\repo\\snake\\dql_models'
+    #    completeName = os.path.join(save_path, self.model_file)
+    #    self.q_eval.save(completeName)
 
-if __name__ == '__main__':
-
+def train():
     agent = Agent(LR, GAMMA, 3, BATCH_SIZE, INPUT_SHAPE)
     game = SnakeGameAI()
     while True:
@@ -294,6 +286,17 @@ if __name__ == '__main__':
 
         if game_over == True:
             agent.learn()
+            with open(f'dqn_model_DO_double_{LAYER_SIZE}.json', 'w') as f:
+                json.dump(agent.score_memory, f)
+            #agent.save_model()
+            agent.score_memory['game_number'] += 1
+            agent.score_memory['score'].append(score)
             game.reset()
-            agent.epsilon += 1
-            print("Game:    ", agent.epsilon)
+            if agent.score_memory['game_number'] > 300:
+                break
+
+if __name__ == '__main__':
+
+    for LAYER_SIZE in np.arange(65, 155, 15):
+        train()
+    

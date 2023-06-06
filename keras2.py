@@ -1,37 +1,86 @@
+from keras.layers import Dense, Activation, BatchNormalization
+from keras.models import Sequential, load_model
+from keras.optimizers import Adam
 import numpy as np
-import random
-from snake_game2 import Point
-from snake_game2 import Direction, SnakeGame
-from ploting_module2 import plot
+from snake_gameAI import Point
+from snake_gameAI import Direction, SnakeGameAI
 import json
 import os.path
+import random
+
+MEMORY_SIZE = 100000
+INPUT_SHAPE = 11
+LR = 0.001
+GAMMA = 0.8
+BATCH_SIZE = 128
+GAME_EPSILON = 150
+#LAYER_SIZE = 256
+
+class ReplayBuffer(object):
+    def __init__(self, max_size, input_shape, n_actions):
+        self.mem_size = max_size
+        self.mem_cntr = 0
+        self.state_memory = np.zeros((self.mem_size, input_shape))
+        self.new_state_memory = np.zeros((self.mem_size, input_shape))
+        self.action_memory = np.zeros((self.mem_size, n_actions), dtype=np.float32)
+        self.reward_memory = np.zeros(self.mem_size)
+
+    def store_transition(self, state, action, reward, state_):
+        index = self.mem_cntr % self.mem_size
+        self.state_memory[index] = state
+        self.new_state_memory[index] = state_
+        self.action_memory[index] = action
+        self.reward_memory[index] = reward
+        self.mem_cntr += 1
+
+    def sample_buffer(self, batch_size):
+        max_mem = min(self.mem_cntr, self.mem_size)
+        batch = np.random.choice(max_mem, batch_size)
+
+        states = self.state_memory[batch]
+        actions = self.action_memory[batch]
+        rewards = self.reward_memory[batch]
+        states_ = self.new_state_memory[batch]
+
+        return states, actions, rewards, states_
+
+def build_dqn(lr, n_actions, input_dims, fc1_dims):
+    model = Sequential([
+                Dense(fc1_dims, input_shape=(input_dims,)),
+                Activation('relu'),
+                Dense(n_actions)])
+
+    model.compile(optimizer=Adam(lr=lr), loss='mse')
+
+    return model
 
 class Agent:
-
-    def __init__(self):
-        #self.games_number = 0
+    def __init__(self, alpha, gamma, n_actions, batch_size,
+                 input_dims,mem_size=MEMORY_SIZE, fname=f'dqn_model.h5'):
+        self.action_space = [i for i in range(n_actions)]
+        self.gamma = gamma
         self.epsilon = 0
-        self.gamma = GAMMA
-        self.ls = LS
-        #self.Qtable = np.random.uniform(low=-0.5, high=0.5, size=(4, 9, 16, 3))
+        self.batch_size = batch_size
+        self.model_file = fname
+        self.memory = ReplayBuffer(mem_size, input_dims, n_actions)
+        self.q_eval = build_dqn(alpha, n_actions, input_dims, LAYER_SIZE)
 
-        if not os.path.isfile(f'file_alfa{self.ls}_gamma{self.gamma}.json'):
-            with open(f'file_alfa{self.ls}_gamma{self.gamma}.json', 'a') as f:
-                table = np.zeros((4, 9, 16, 3))
-                tableBetter = table.tolist()
+        if not os.path.isfile(f'dqn_model_{LAYER_SIZE}.json'):
+            with open(f'dqn_model_{LAYER_SIZE}.json', 'a') as f:
                 qwe = {
                 'game_number' : 0,
-                'memory' : tableBetter,
-                'score' : [0],
-                'average' : [0],
-                'record' : 0
+                'score' : []
                 }
                 j = json.dumps(qwe)
                 f.write(j)
-            self.memory = json.load(open(f'file_alfa{self.ls}_gamma{self.gamma}.json'))
-        elif os.path.isfile(f'file_alfa{self.ls}_gamma{self.gamma}.json'):
-            self.memory = json.load(open(f'file_alfa{self.ls}_gamma{self.gamma}.json'))
+            self.score_memory = json.load(open(f'dqn_model_{LAYER_SIZE}.json'))
+        elif os.path.isfile(f'dqn_model_{LAYER_SIZE}.json'):
+            self.score_memory = json.load(open(f'dqn_model_{LAYER_SIZE}.json'))
 
+
+    def remember(self, state, action, reward, new_state):
+        self.memory.store_transition(state, action, reward, new_state)
+               
     def get_state(self, game):
         head = game.snake[0]
         point_l = Point(head.x - 20, head.y)
@@ -76,8 +125,10 @@ class Agent:
             game.food.y < game.head.y,  # food up
             game.food.y > game.head.y  # food down
             ]
+
+        arr = np.concatenate((state1, state2, state3))
         
-        return np.array(state1, dtype=int), np.array(state2, dtype=int), np.array(state3, dtype=int)
+        return arr
 
     def get_state_next(self, game, move):
         head = game.snake[0]
@@ -176,101 +227,72 @@ class Agent:
             game.food.y > new_head_y  # food down
             ]
         
-        return np.array(state1, dtype=int), np.array(state2, dtype=int), np.array(state3, dtype=int)
+        arr_next = np.concatenate((state1, state2, state3))
+        
+        return arr_next
 
-    def get_action(self, c1, c2, c3):
-        self.epsilon = 150 - self.memory['game_number']
+    def get_action(self, state):
+        state = state[np.newaxis, :]
+        epsilon = GAME_EPSILON - self.score_memory['game_number']
         final_move = [0, 0, 0]
-        if random.randint(0, 200) < self.epsilon:
+        if random.randint(0, GAME_EPSILON) < epsilon:
             move = random.randint(0, 2)
             final_move[move] = 1
         else:
-            move = np.argmax(self.memory['memory'][c1][c2][c3])
-            final_move[move] = 1
+            actions = self.q_eval.predict(state)
+            print(actions)
+            print('-----')
+            action = np.argmax(actions)
+            final_move[action] = 1
         return final_move
 
-def find_index(vector):
-    i = 0
-    for cell in vector:
-        if cell == 1:
-            return i
-        else:
-            i += 1
+    def learn(self):
+        if self.memory.mem_cntr > self.batch_size:
+            state, action, reward, new_state = self.memory.sample_buffer(self.batch_size)
+            action_values = np.array(self.action_space, dtype=np.int8)
+            action_indices_ = np.dot(action, action_values)
+            action_indices = action_indices_.astype(int)
 
-def binaryToDecimal(val): 
-    return int(val, 2) 
+            q_eval = self.q_eval.predict(state)
+
+            q_next = self.q_eval.predict(new_state)
+
+            q_target = q_eval.copy()
+
+            batch_index = np.arange(self.batch_size, dtype=np.int32)
+
+            q_target[batch_index, action_indices] = reward + self.gamma*np.max(q_next, axis=1)
+
+            _ = self.q_eval.fit(state, q_target)
+
+    #def save_model(self):
+    #    save_path = 'C:\\Users\\Michał\\Desktop\\repo\\snake\\dql_models'
+    #    completeName = os.path.join(save_path, self.model_file)
+    #    self.q_eval.save(completeName)
 
 def train():
-    plot_scores = []
-    plot_average_scores = []
-    total_score = 0
-    record = 0
-    agent = Agent()
-    game = SnakeGame()
+    agent = Agent(LR, GAMMA, 3, BATCH_SIZE, INPUT_SHAPE)
+    game = SnakeGameAI()
     while True:
         state_old = agent.get_state(game)
-        vect_directions = state_old[0]
-        vect_dangers = state_old[1]
-        vect_point = state_old[2]
-        qwe = ''.join([str(elem) for elem in vect_dangers])
-        asd = ''.join([str(elem) for elem in vect_point])
-        coordinate1 = find_index(vect_directions)
-        coordinate2 = binaryToDecimal(qwe)
-        coordinate3 = binaryToDecimal(asd)
-        index_q = np.argmax(agent.memory['memory'][coordinate1][coordinate2][coordinate3])
-        q = agent.memory['memory'][coordinate1][coordinate2][coordinate3][index_q]
-        finale_move = agent.get_action(coordinate1, coordinate2, coordinate3)
-        #--------------------------
-        game_over, score, reward = game.play_step(finale_move) #make move
-        #--------------------------
-        state_new = agent.get_state_next(game, finale_move)
-        vect_directions_new = state_new[0]
-        vect_dangers_new = state_new[1]
-        vect_point_new = state_new[2]
-        qwe_new = ''.join([str(elem) for elem in vect_dangers_new])
-        asd_new = ''.join([str(elem) for elem in vect_point_new])
-        coordinate1_new = find_index(vect_directions_new)
-        coordinate2_new = binaryToDecimal(qwe_new)
-        coordinate3_new = binaryToDecimal(asd_new)
-        index_q_prim = np.argmax(agent.memory['memory'][coordinate1_new][coordinate2_new][coordinate3_new])
-        q_prim = agent.memory['memory'][coordinate1_new][coordinate2_new][coordinate3_new][index_q_prim]
-        #-------------------------
-        #new_Q = q + agent.ls * (reward + agent.gamma * q_prim - q)
-        #------------------------
-
-        agent.memory['memory'][coordinate1][coordinate2][coordinate3][index_q] = agent.memory['memory'][coordinate1][coordinate2][coordinate3][index_q] + agent.ls * (reward + agent.gamma * q_prim - q)
-        with open(f'file_alfa{agent.ls}_gamma{agent.gamma}.json', 'w') as f:
-            json.dump(agent.memory, f)
-
-
-        #agent.memory['memory'][coordinate1][coordinate2][coordinate3][index_q] = new_Q
-        #print(q, new_Q)
-
-        
+        final_move = agent.get_action(state_old)
+        state_new = agent.get_state_next(game, final_move)
+        reward, game_over, score = game.play_step(final_move)
+        agent.remember(state_old, final_move, reward, state_new)
 
         if game_over == True:
+            agent.learn()
+            with open(f'dqn_model_{LAYER_SIZE}.json', 'w') as f:
+                json.dump(agent.score_memory, f)
+            #agent.save_model()
+            agent.score_memory['game_number'] += 1
+            agent.score_memory['score'].append(score)
             game.reset()
-            agent.memory['game_number'] = agent.memory['game_number'] + 1
-            agent.memory['score'].append(score)
-            #print(f'gra', agent.games_number)
-
-
-            if score > record:
-                record = score
-
-            #print('Game: ', agent.memory['game_number'], 'Score: ', score, 'Record: ', record)
-
-            #plot_scores.append(score)
-            #total_score += score
-            #average_score = total_score / agent.memory['game_number']
-            #plot_average_scores.append(average_score)
-            if agent.memory['game_number'] > 300:
+            if agent.score_memory['game_number'] > 300:
                 break
-                
 
-    
 if __name__ == '__main__':
 
-    LS = 0.5
-    GAMMA = 0.7000000000000001
-    train()
+    for LAYER_SIZE in np.arange(20, 30, 15):
+        train()
+    
