@@ -24,7 +24,7 @@ GREEN = pygame.Color(0, 255, 0)
 BLUE = pygame.Color(0, 0, 255)
 
 BLOCK_SIZE = 20
-SPEED = 20
+SPEED = 40
 
 class SnakeGameAI:
     
@@ -42,11 +42,11 @@ class SnakeGameAI:
         self.direction = Direction.RIGHT
         self.head = Point(self.w/2, self.h/2)
         self.snake = [self.head]
+
         self.score = 0
         self.kill_cooldown = 100
         self.food = None
         self.place_food()
-        #self.iterations = 0
     
     def place_food(self):
         x = random.randint(0, (self.w-BLOCK_SIZE)//BLOCK_SIZE) * BLOCK_SIZE
@@ -56,7 +56,6 @@ class SnakeGameAI:
             self.place_food()
 
     def play_step(self, action):
-        #self.iterations += 1
         # 1. collect user inputs
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -79,7 +78,6 @@ class SnakeGameAI:
         if self.head == self.food:
             self.score += 1
             reward = 1
-            self.iterations = 0
             self.place_food()
             self.kill_cooldown = 100 + len(self.snake)
         else:
