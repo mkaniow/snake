@@ -1,7 +1,7 @@
 import numpy as np
 import random
-from snake_game2 import Point
-from snake_game2 import Direction, SnakeGame
+from snake_game import Point
+from snake_game import Direction, SnakeGame
 from ploting_module2 import plot
 import json
 import os.path
