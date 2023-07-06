@@ -8,15 +8,22 @@ import json
 import os.path
 import random
 
+#some variables to create model
 MEMORY_SIZE = 100000
 INPUT_SHAPE = 11
 LR = 0.001
 GAMMA = 0.8
 BATCH_SIZE = 128
+LAYER_SIZE = 256
+FILE_NAME = f'dqn_model_score_memory_{LAYER_SIZE}.json'
+
+#length of training stage
 GAME_EPSILON = 150
-#LAYER_SIZE = 256
 
 class ReplayBuffer(object):
+    """
+    ReplayBuffer handles storage of the state, action, reward, state transition
+    """
     def __init__(self, max_size, input_shape, n_actions):
         self.mem_size = max_size
         self.mem_cntr = 0
@@ -36,13 +43,14 @@ class ReplayBuffer(object):
     def sample_buffer(self, batch_size):
         max_mem = min(self.mem_cntr, self.mem_size)
         batch = np.random.choice(max_mem, batch_size)
-
         states = self.state_memory[batch]
         actions = self.action_memory[batch]
         rewards = self.reward_memory[batch]
         states_ = self.new_state_memory[batch]
 
         return states, actions, rewards, states_
+
+#below are 6 functions to build a model
 
 def build_dqn(lr, n_actions, input_dims, fc1_dims, fc2_dims):
     model = Sequential([
@@ -133,6 +141,9 @@ def build_dqn(lr, n_actions, input_dims, fc1_dims, fc2_dims):
 #    return model
 
 class Agent:
+    """
+    This class creating a deep Q-learning agent
+    """
     def __init__(self, alpha, gamma, n_actions, batch_size,
                  input_dims,mem_size=MEMORY_SIZE, fname=f'dqn_model.h5'):
         self.action_space = [i for i in range(n_actions)]
@@ -143,17 +154,17 @@ class Agent:
         self.memory = ReplayBuffer(mem_size, input_dims, n_actions)
         self.q_eval = build_dqn(alpha, n_actions, input_dims, LAYER_SIZE, LAYER_SIZE)
 
-        if not os.path.isfile(f'dqn_model_double_DO_{LAYER_SIZE}.json'):
-            with open(f'dqn_model_double_DO_{LAYER_SIZE}.json', 'a') as f:
-                qwe = {
+        if not os.path.isfile(FILE_NAME):
+            with open(FILE_NAME, 'a') as f:
+                sample = {
                 'game_number' : 0,
                 'score' : []
                 }
-                j = json.dumps(qwe)
-                f.write(j)
-            self.score_memory = json.load(open(f'dqn_model_double_DO_{LAYER_SIZE}.json'))
-        elif os.path.isfile(f'dqn_model_double_DO_{LAYER_SIZE}.json'):
-            self.score_memory = json.load(open(f'dqn_model_double_DO_{LAYER_SIZE}.json'))
+                json_string = json.dumps(sample)
+                f.write(json_string)
+            self.score_memory = json.load(open(FILE_NAME))
+        elif os.path.isfile(FILE_NAME):
+            self.score_memory = json.load(open(FILE_NAME))
 
 
     def remember(self, state, action, reward, new_state):
@@ -318,8 +329,6 @@ class Agent:
             final_move[move] = 1
         else:
             actions = self.q_eval.predict(state)
-            print(actions)
-            print('-----')
             action = np.argmax(actions)
             final_move[action] = 1
         return final_move
@@ -360,17 +369,20 @@ def train():
 
         if game_over == True:
             agent.learn()
-            with open(f'dqn_model_double_DO_{LAYER_SIZE}.json', 'w') as f:
+            with open(FILE_NAME, 'w') as f:
                 json.dump(agent.score_memory, f)
             #agent.save_model()
             agent.score_memory['game_number'] += 1
             agent.score_memory['score'].append(score)
             game.reset()
-            if agent.score_memory['game_number'] > 300:
-                break
+            #if agent.score_memory['game_number'] > 300:
+            #    break
 
 if __name__ == '__main__':
 
-    for LAYER_SIZE in np.arange(240, 241, 30):
-        train()
-    
+    train()
+
+#loop to train diffrent models
+#    for LAYER_SIZE in np.arange(65, 155, 15):
+#        train()
+#    
